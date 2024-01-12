@@ -15,8 +15,8 @@
     </ItemGroup>
 
     <ItemGroup>
-      <Folder Include="wd\" />
-      <Folder Include="wd\獠牙千金 史上最强佣兵，成为史上最暴虐大小姐，称霸第二次的世界\" />
+        <Folder Include="wd\"/>
+        <Folder Include="wd\獠牙千金 史上最强佣兵，成为史上最暴虐大小姐，称霸第二次的世界\"/>
     </ItemGroup>
 
 

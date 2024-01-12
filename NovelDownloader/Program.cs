@@ -9,7 +9,7 @@ CookieContainer cookieContainer = new();
 HttpClientHandler handler = new()
 {
     CookieContainer = cookieContainer,
-    AutomaticDecompression = DecompressionMethods.GZip,
+    AutomaticDecompression = DecompressionMethods.GZip
     // ServerCertificateCustomValidationCallback = (message, certificate2, chain, ssl) => true
 };
 HttpClient client = new(handler);

@@ -1,5 +1,4 @@
-﻿using System.Text;
-using System.Text.Encodings.Web;
+﻿using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Unicode;
 
@@ -7,17 +6,17 @@ namespace NovelDownloader.Core;
 
 public interface INovelProvider
 {
-    public static readonly JsonSerializerOptions JsonSerializerOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
-    };
-
     public enum Type
     {
         Standalone,
         Chapter
     }
+
+    public static readonly JsonSerializerOptions JsonSerializerOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        Encoder = JavaScriptEncoder.Create(UnicodeRanges.All)
+    };
 
     public Type NovelType { get; }
     public string BaseAddress { get; }
@@ -28,11 +27,11 @@ public interface INovelProvider
 
     public HttpRequestMessage CreateRequest(string address, string? cookieStr = null);
 
-    public Task<List<NovelInfo.INovel>> AnalyzeNovels(HttpClient client, string address);
+    public Task<List<INovel>> AnalyzeNovels(HttpClient client, string address);
 
-    public string FixAddress(IList<NovelInfo.ChapterNovel> novels, int nIndex, int cIndex);
+    public string FixAddress(IList<ChapterNovel> novels, int nIndex, int cIndex);
 
-    public NovelInfo.ChapterProcessResult ProcessChapter(string html);
+    public ChapterProcessResult ProcessChapter(string html);
 
-    public string GenerateMetaInfo(NovelInfo.INovel novel);
+    public string GenerateMetaInfo(INovel novel);
 }

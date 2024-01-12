@@ -1,18 +1,14 @@
-﻿using System.Text.Json;
-
-namespace NovelDownloader.Core;
+﻿namespace NovelDownloader.Core;
 
 public class Downloader
 {
+    private readonly string _address;
     private readonly HttpClient _httpClient;
+    private readonly SemaphoreSlim _parallelImage = new(3);
     private readonly Func<List<int>, Task> _process;
     private readonly INovelProvider _provider;
-    private readonly string _address;
-    private readonly SemaphoreSlim _parallelImage = new(3);
 
-    private List<NovelInfo.INovel> _novels = [];
-
-    public string DownloadPath { get; init; } = Directory.GetCurrentDirectory();
+    private List<INovel> _novels = [];
 
     public Downloader(HttpClient httpClient, INovelProvider provider, string address)
     {
@@ -28,6 +24,8 @@ public class Downloader
         };
     }
 
+    public string DownloadPath { get; init; } = Directory.GetCurrentDirectory();
+
     public async Task AnalyzeNovels()
     {
         _novels = await _provider.AnalyzeNovels(_httpClient, _address);
@@ -41,16 +39,14 @@ public class Downloader
     public async Task Download(List<int> novelIndex)
     {
         if (novelIndex.ToList().Find(i => i >= _novels.Count) is var index && index > _novels.Count)
-        {
             throw new ArgumentOutOfRangeException(nameof(novelIndex), index, "download index is out of list");
-        }
 
         await _process.Invoke(novelIndex);
     }
 
     private async Task ProcessStandaloneNovel(List<int> downloadIndex)
     {
-        var novels = _novels.OfType<NovelInfo.StandaloneNovel>().ToList();
+        var novels = _novels.OfType<StandaloneNovel>().ToList();
         if (novels.Count == 0) throw new ArgumentException("download list is empty");
 
         throw new NotImplementedException();
@@ -58,7 +54,7 @@ public class Downloader
 
     private async Task ProcessChapterNovel(List<int> downloadIndex)
     {
-        var novels = _novels.OfType<NovelInfo.ChapterNovel>().ToList();
+        var novels = _novels.OfType<ChapterNovel>().ToList();
         if (novels.Count == 0) throw new ArgumentException("download list is empty");
 
         foreach (var (novel, ni) in novels.Select((n, i) => (n, i)))
@@ -82,20 +78,18 @@ public class Downloader
                 if (!chapter.Address.StartsWith("http")
                     && _provider.FixAddress(novels, ni, ci) is var fixedAddress
                     && !string.IsNullOrEmpty(fixedAddress))
-                {
                     chapter.Address = fixedAddress;
-                }
 
                 if (!chapter.Address.StartsWith("http"))
                 {
-                    chapter.Status = NovelInfo.Chapter.ChapterStatus.Failed;
+                    chapter.Status = Chapter.ChapterStatus.Failed;
                     chapter.Context = $"## [{chapter.Name}]({novel.Address}) DOWNLOAD FAILED";
                     Console.ForegroundColor = ConsoleColor.Red;
                     Console.WriteLine("[{0} | {1} | {2}] get content failed.", novel.Name, novel.Title, chapter.Name);
                     Console.ResetColor();
                 }
 
-                if (chapter.Status == NovelInfo.Chapter.ChapterStatus.Ready)
+                if (chapter.Status == Chapter.ChapterStatus.Ready)
                 {
                     Console.WriteLine("start download [{0} | {1} | {2}]: {3}",
                         novel.Name, novel.Title, chapter.Name, chapter.Address);
@@ -103,9 +97,9 @@ public class Downloader
                 }
             }
 
-            List<NovelInfo.ImageInfo> images = [..chapters.SelectMany(c => c.Images)];
-            if (novel.Cover != null) images.Add(novel.Cover);
+            List<ImageInfo?> images = [..chapters.SelectMany(c => c.Images), novel.Cover];
             var tasks = images
+                .OfType<ImageInfo>()
                 .DistinctBy(img => img.Address)
                 .Select(img =>
                 {
@@ -149,13 +143,13 @@ public class Downloader
         }
     }
 
-    private async Task<NovelInfo.Chapter> ProcessChapter(NovelInfo.Chapter chapter, bool onlyAnalyze = false)
+    private async Task<Chapter> ProcessChapter(Chapter chapter, bool onlyAnalyze = false)
     {
-        NovelInfo.ChapterProcessResult result = new(true, chapter.Address);
+        ChapterProcessResult result = new(true, chapter.Address);
         var retry = 0;
         while (result.NextPage && retry < 5)
         {
-            string chapterHtml = "";
+            var chapterHtml = "";
             try
             {
                 Console.WriteLine("get page: {0}", result.NextAddress);
@@ -179,21 +173,24 @@ public class Downloader
         }
 
         chapter.NextChapterAddress = result.NextAddress;
-        chapter.Status = NovelInfo.Chapter.ChapterStatus.Success;
+        chapter.Status = Chapter.ChapterStatus.Success;
 
         return chapter;
     }
 
 
-    private Task DownloadImage(NovelInfo.ImageInfo image, string savePath) => Task.Run(async () =>
+    private Task DownloadImage(ImageInfo image, string savePath)
     {
-        await _parallelImage.WaitAsync();
-        var imageFilePath = $"{savePath}/{image.FileName}";
-        var request = _provider.CreateRequest(image.Address);
-        var response = await _httpClient.SendAsync(request);
-        var bodyStream = await response.Content.ReadAsStreamAsync();
-        var imageStream = File.OpenWrite(imageFilePath);
-        await bodyStream.CopyToAsync(imageStream);
-        _parallelImage.Release();
-    });
+        return Task.Run(async () =>
+        {
+            await _parallelImage.WaitAsync();
+            var imageFilePath = $"{savePath}/{image.FileName}";
+            var request = _provider.CreateRequest(image.Address);
+            var response = await _httpClient.SendAsync(request);
+            var bodyStream = await response.Content.ReadAsStreamAsync();
+            var imageStream = File.OpenWrite(imageFilePath);
+            await bodyStream.CopyToAsync(imageStream);
+            _parallelImage.Release();
+        });
+    }
 }

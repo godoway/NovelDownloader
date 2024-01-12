@@ -19,6 +19,23 @@ public class LiNovelProvider : INovelProvider
     private static readonly Regex
         AddressRegex = new("^https:\\/\\/www.linovelib.com\\/novel\\/\\d+(.html|\\/catalog)$");
 
+    private readonly Dictionary<string, string> _dictionary = new()
+    {
+        { "", "的" }, { "", "一" }, { "", "是" }, { "", "了" }, { "", "我" }, { "", "不" }, { "", "人" }, { "", "在" },
+        { "", "他" }, { "", "有" }, { "", "这" }, { "", "个" }, { "", "上" }, { "", "们" }, { "", "来" }, { "", "到" },
+        { "", "时" }, { "", "大" }, { "", "地" }, { "", "为" }, { "", "子" }, { "", "中" }, { "", "你" }, { "", "说" },
+        { "", "生" }, { "", "国" }, { "", "年" }, { "", "着" }, { "", "就" }, { "", "那" }, { "", "和" }, { "", "要" },
+        { "", "她" }, { "", "出" }, { "", "也" }, { "", "得" }, { "", "里" }, { "", "后" }, { "", "自" }, { "", "以" },
+        { "", "会" }, { "", "家" }, { "", "可" }, { "", "下" }, { "", "而" }, { "", "过" }, { "", "天" }, { "", "去" },
+        { "", "能" }, { "", "对" }, { "", "小" }, { "", "多" }, { "", "然" }, { "", "于" }, { "", "心" }, { "", "学" },
+        { "", "么" }, { "", "之" }, { "", "都" }, { "", "好" }, { "", "看" }, { "", "起" }, { "", "发" }, { "", "当" },
+        { "", "没" }, { "", "成" }, { "", "只" }, { "", "如" }, { "", "事" }, { "", "把" }, { "", "还" }, { "", "用" },
+        { "", "第" }, { "", "样" }, { "", "道" }, { "", "想" }, { "", "作" }, { "", "种" }, { "", "开" }, { "", "美" },
+        { "", "乳" }, { "", "阴" }, { "", "液" }, { "", "茎" }, { "", "欲" }, { "", "呻" }, { "", "肉" }, { "", "交" },
+        { "", "性" }, { "", "胸" }, { "", "私" }, { "", "穴" }, { "", "淫" }, { "", "臀" }, { "", "舔" }, { "", "射" },
+        { "", "脱" }, { "", "裸" }, { "", "骚" }, { "", "唇" }
+    };
+
     private readonly HtmlDocument _htmlDocument = new()
     {
         OptionWriteEmptyNodes = true
@@ -33,7 +50,7 @@ public class LiNovelProvider : INovelProvider
         HttpRequestMessage request = new()
         {
             Method = HttpMethod.Get,
-            RequestUri = new(address),
+            RequestUri = new Uri(address),
             Headers =
             {
                 {
@@ -44,22 +61,16 @@ public class LiNovelProvider : INovelProvider
             }
         };
 
-        if (!string.IsNullOrEmpty(cookieStr))
-        {
-            request.Headers.Add("Cookie", cookieStr);
-        }
+        if (!string.IsNullOrEmpty(cookieStr)) request.Headers.Add("Cookie", cookieStr);
 
         return request;
     }
 
-    public async Task<List<NovelInfo.INovel>> AnalyzeNovels(HttpClient client, string address)
+    public async Task<List<INovel>> AnalyzeNovels(HttpClient client, string address)
     {
-        if (!AddressRegex.IsMatch(address))
-        {
-            throw new ArgumentException($"[{address}] is not match");
-        }
+        if (!AddressRegex.IsMatch(address)) throw new ArgumentException($"[{address}] is not match");
 
-        string catalogUrl = address.Contains("catalog") ? address : address.Replace(".html", "/catalog");
+        var catalogUrl = address.Contains("catalog") ? address : address.Replace(".html", "/catalog");
 
         var request = CreateRequest(catalogUrl);
         var response = await client.SendAsync(request);
@@ -76,7 +87,7 @@ public class LiNovelProvider : INovelProvider
         var name = titleNode.InnerText;
         var author = authorNode?.InnerText ?? string.Empty;
 
-        List<NovelInfo.INovel> list = [];
+        List<INovel> list = [];
         foreach (var (volumeNode, seq) in volumeNodeList.Select((v, i) => (v, i)))
         {
             var vTitleNode = volumeNode.QuerySelector(QueryVolumeTitleLi);
@@ -87,14 +98,14 @@ public class LiNovelProvider : INovelProvider
             var title = vTitleNode.InnerText ?? "";
             var coverSrc = coverNode.Attributes["data-original"].Value;
             var firstChapter = coverNode.ParentNode.Attributes["href"].Value;
-            var novel = new NovelInfo.ChapterNovel(seq, firstChapter, name, title) { Author = author };
+            var novel = new ChapterNovel(seq, firstChapter, name, title) { Author = author };
 
             if (!string.IsNullOrEmpty(coverSrc) && !coverSrc.Contains("no-cover"))
             {
                 Uri uri = new(coverSrc);
                 var path = uri.GetComponents(UriComponents.Path, UriFormat.UriEscaped);
                 var ext = Path.GetExtension(path);
-                NovelInfo.ImageInfo cover = new($"cover{ext}", coverSrc, BaseAddress);
+                ImageInfo cover = new($"cover{ext}", coverSrc, BaseAddress);
                 novel.Cover = cover;
             }
 
@@ -105,16 +116,13 @@ public class LiNovelProvider : INovelProvider
                         .Replace("》", " ")
                         .Trim();
                     var src = c.Attributes["href"].Value;
-                    if (src.Contains("javascript:"))
-                    {
-                        src = firstChapter;
-                    }
+                    if (src.Contains("javascript:")) src = firstChapter;
 
                     if (string.IsNullOrEmpty(src)) return null;
-                    return new NovelInfo.Chapter(BaseAddress + src, i, chapterName);
+                    return new Chapter(BaseAddress + src, i, chapterName);
                 })
                 .Where(c => c != null)
-                .OfType<NovelInfo.Chapter>();
+                .OfType<Chapter>();
             novel.Chapters.AddRange(chapters);
             list.Add(novel);
         }
@@ -124,39 +132,35 @@ public class LiNovelProvider : INovelProvider
 
 
     public string FixAddress(
-        IList<NovelInfo.ChapterNovel> novels,
+        IList<ChapterNovel> novels,
         int nIndex, int cIndex)
     {
         var currentNovel = novels[nIndex];
         var count = currentNovel.Chapters.Count;
 
-        NovelInfo.Chapter? prev = null;
+        Chapter? prev = null;
         if (cIndex != 0) prev = currentNovel.Chapters[cIndex - 1];
         else if (nIndex != 0) prev = novels[nIndex - 1].Chapters.LastOrDefault();
 
-        // NovelInfo.Chapter? next = null;
+        // Chapter? next = null;
         // if (cIndex < count - 1) next = currentNovel.Chapters[cIndex + 1];
         // else if (nIndex != novels.Count - 1) next = novels[nIndex + 1].Chapters.FirstOrDefault();
 
         return prev?.NextChapterAddress ?? string.Empty;
     }
 
-    public NovelInfo.ChapterProcessResult ProcessChapter(string html)
+    public ChapterProcessResult ProcessChapter(string html)
     {
         _htmlDocument.LoadHtml(html);
         var document = _htmlDocument.DocumentNode;
         StringBuilder builder = new();
-        List<NovelInfo.ImageInfo> images = [];
+        List<ImageInfo> images = [];
 
         foreach (var content in document.QuerySelectorAll(".read-content > *"))
-        {
             if (content.Name == "p" || content.Name == "br")
             {
                 var text = content.InnerText;
-                foreach (var (key, value) in _dictionary)
-                {
-                    text = text.Replace(key, value);
-                }
+                foreach (var (key, value) in _dictionary) text = text.Replace(key, value);
 
                 builder.AppendLine(text);
             }
@@ -164,12 +168,12 @@ public class LiNovelProvider : INovelProvider
             {
                 var imgAddress = content.Attributes["data-src"]?.Value
                                  ?? content.Attributes["src"]?.Value;
-                if (!String.IsNullOrEmpty(imgAddress) && !imgAddress.Contains("sloading"))
+                if (!string.IsNullOrEmpty(imgAddress) && !imgAddress.Contains("sloading"))
                 {
                     Uri uri = new(imgAddress);
                     var uriPath = uri.GetComponents(UriComponents.Path, UriFormat.UriEscaped);
                     var name = uriPath.Replace("/", "_");
-                    var img = new NovelInfo.ImageInfo(name, imgAddress, BaseAddress);
+                    var img = new ImageInfo(name, imgAddress, BaseAddress);
                     images.Add(img);
                     builder.AppendLine($"![]({name})");
                 }
@@ -178,7 +182,6 @@ public class LiNovelProvider : INovelProvider
             {
                 builder.AppendLine();
             }
-        }
 
         var prev = document.QuerySelector(".mlfy_page > a:first-child");
         var next = document.QuerySelector(".mlfy_page > a:last-child");
@@ -187,37 +190,29 @@ public class LiNovelProvider : INovelProvider
         var nextAddress = BaseAddress + next.Attributes["href"]?.Value;
         var hasNext = nextAddress?.Contains("_") ?? false;
 
-        return new(hasNext, nextAddress, prevAddress, builder.ToString(), images);
+        return new ChapterProcessResult(hasNext, nextAddress, prevAddress, builder.ToString(), images);
     }
 
-    public string GenerateMetaInfo(NovelInfo.INovel novel)
+    public string GenerateMetaInfo(INovel novel)
     {
+        var title = novel switch
+        {
+            ChapterNovel n => n.Title,
+            _ => string.Empty
+        };
         return JsonSerializer.Serialize(new
         {
             DownloadTime = DateTime.Now,
-            Name = novel.Name,
-            Seq = novel.Seq,
-            Author = novel.Author ?? "",
-            Description = novel.Description
+            novel.Name,
+            novel.Seq,
+            Title = title,
+            Author = novel.Author ?? string.Empty,
+            novel.Description
         }, INovelProvider.JsonSerializerOptions);
     }
 
-    public bool Support(string url) => url.StartsWith(BaseAddress);
-
-    private readonly Dictionary<string, string> _dictionary = new()
+    public bool Support(string url)
     {
-        { "", "的" }, { "", "一" }, { "", "是" }, { "", "了" }, { "", "我" }, { "", "不" }, { "", "人" }, { "", "在" },
-        { "", "他" }, { "", "有" }, { "", "这" }, { "", "个" }, { "", "上" }, { "", "们" }, { "", "来" }, { "", "到" },
-        { "", "时" }, { "", "大" }, { "", "地" }, { "", "为" }, { "", "子" }, { "", "中" }, { "", "你" }, { "", "说" },
-        { "", "生" }, { "", "国" }, { "", "年" }, { "", "着" }, { "", "就" }, { "", "那" }, { "", "和" }, { "", "要" },
-        { "", "她" }, { "", "出" }, { "", "也" }, { "", "得" }, { "", "里" }, { "", "后" }, { "", "自" }, { "", "以" },
-        { "", "会" }, { "", "家" }, { "", "可" }, { "", "下" }, { "", "而" }, { "", "过" }, { "", "天" }, { "", "去" },
-        { "", "能" }, { "", "对" }, { "", "小" }, { "", "多" }, { "", "然" }, { "", "于" }, { "", "心" }, { "", "学" },
-        { "", "么" }, { "", "之" }, { "", "都" }, { "", "好" }, { "", "看" }, { "", "起" }, { "", "发" }, { "", "当" },
-        { "", "没" }, { "", "成" }, { "", "只" }, { "", "如" }, { "", "事" }, { "", "把" }, { "", "还" }, { "", "用" },
-        { "", "第" }, { "", "样" }, { "", "道" }, { "", "想" }, { "", "作" }, { "", "种" }, { "", "开" }, { "", "美" },
-        { "", "乳" }, { "", "阴" }, { "", "液" }, { "", "茎" }, { "", "欲" }, { "", "呻" }, { "", "肉" }, { "", "交" },
-        { "", "性" }, { "", "胸" }, { "", "私" }, { "", "穴" }, { "", "淫" }, { "", "臀" }, { "", "舔" }, { "", "射" },
-        { "", "脱" }, { "", "裸" }, { "", "骚" }, { "", "唇" },
-    };
+        return url.StartsWith(BaseAddress);
+    }
 }

@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="CommandLineParser" Version="2.9.1"/>
+
+        <PackageReference Include="Fizzler" Version="1.3.0"/>
+        <PackageReference Include="Fizzler.Systems.HtmlAgilityPack" Version="1.2.1"/>
+    </ItemGroup>
+
+    <ItemGroup>
+      <Folder Include="wd\" />
+      <Folder Include="wd\獠牙千金 史上最强佣兵，成为史上最暴虐大小姐，称霸第二次的世界\" />
+    </ItemGroup>
+
+
+</Project>
